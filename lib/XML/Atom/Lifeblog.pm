@@ -2,40 +2,53 @@ package XML::Atom::Lifeblog;
 
 use strict;
 use vars qw($VERSION);
-$VERSION = '0.01';
+$VERSION = '0.02';
 
 use Encode;
+use File::Basename;
+use MIME::Types;
 use XML::Atom::Client;
 use XML::Atom::Entry;
-use Image::Info qw(image_info);
 use base qw(XML::Atom::Client);
 
 sub postLifeblog {
-    my($self, $post_uri, $title, $body, $image) = @_;
-    my($content, $image_title);
-    if (ref($image) && ref($image) eq 'SCALAR') {
-	$content     = $$image;
-	$image_title = $title;
-    } else {
-	require File::Basename;
-	local $/;
-	open my $fh, $image or return $self->error("$image: $!");
-	$content = <$fh>;
-	$image_title = File::Basename::basename($image);
+    my($self, $post_uri, $title, $body, $media) = @_;
+    my($content, $media_title);
+    if (ref($media)) {
+	return $self->error("post scalarref is now depreciated.");
     }
 
-    my $mime_type = image_info(\$content)->{file_media_type};
-    my $atom_image   = $self->_create_image($image_title, $content, $mime_type);
-    my $posted_image = $self->_post_entry($post_uri, $atom_image);
-    my $atom_body    = $self->_create_body($title, $body, $posted_image->id, $mime_type);
+    # XXX should it support chunked POST?
+    local $/;
+    open my $fh, $media or return $self->error("$media: $!");
+    $content = <$fh>;
+    $media_title = File::Basename::basename($media);
+
+    my $mime_type  = $self->_guess_mime_type($media);
+    my $atom_media = $self->_create_media($media_title, $content, $mime_type);
+    my $posted = $self->_post_entry($post_uri, $atom_media)
+	or return $self->error("POST ($media) failed: " . $self->errstr);
+    my $atom_body = $self->_create_body($title, $body, $posted->id, $mime_type);
     return $self->_post_entry($post_uri, $atom_body);
 }
 
-sub _create_image {
-    my($self, $image_title, $content, $mime_type) = @_;
+sub _guess_mime_type {
+    my($self, $media) = @_;
+    # MIME::Types doesn't support 3gpp
+    if ($media =~ /\.3gpp?$/) {
+	# XXX what about audio/3gpp?
+	return "video/3gpp";
+    } else {
+	my $mime = MIME::Types->new->mimeTypeOf($media);
+	return $mime ? $mime->type : "application/octet-stream";
+    }
+}
+
+sub _create_media {
+    my($self, $media_title, $content, $mime_type) = @_;
 
     my $entry = XML::Atom::Entry->new();
-    $entry->title($image_title);
+    $entry->title($media_title);
     $entry->content($content);
     $entry->content->type($mime_type);
 
@@ -109,11 +122,10 @@ XML::Atom::Lifeblog is a subclass of XML::Atom::Client.
 
 =head1 postLifeblog
 
-  my $entry = $client->postLifeblog($PostURI, $title, $body, $image);
+  my $entry = $client->postLifeblog($PostURI, $title, $body, $media);
 
 Creates a new Lifeblog entry and post it to a Lifeblog aware server
-using C<< <standalone> >> element. C<$image> is either a filename as
-a scalar or an image binary as a scalarref.
+using C<< <standalone> >> element. C<$image> is a filepath of image or video files to be posted.
 
 Returns XML::Atom::Entry object for the posted entry.
 
