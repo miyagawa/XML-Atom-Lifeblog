@@ -125,7 +125,7 @@ XML::Atom::Lifeblog is a subclass of XML::Atom::Client.
   my $entry = $client->postLifeblog($PostURI, $title, $body, $media);
 
 Creates a new Lifeblog entry and post it to a Lifeblog aware server
-using C<< <standalone> >> element. C<$image> is a filepath of image or video files to be posted.
+using C<< <standalone> >> element. C<$media> is a filepath of image or video files to be posted.
 
 Returns XML::Atom::Entry object for the posted entry.
 
