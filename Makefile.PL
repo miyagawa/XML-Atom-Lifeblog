@@ -6,5 +6,6 @@ WriteMakefile(
 	Test::More => 0.32,
 	MIME::Types => 0,
 	XML::Atom => 0.11,
+        File::Type => 0,
     },
 );

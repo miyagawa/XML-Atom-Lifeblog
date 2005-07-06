@@ -2,33 +2,28 @@ package XML::Atom::Lifeblog;
 
 use strict;
 use vars qw($VERSION);
-$VERSION = '0.02';
+$VERSION = '0.03';
 
 use Encode;
 use File::Basename;
 use MIME::Types;
 use XML::Atom::Client;
 use XML::Atom::Entry;
+use XML::Atom::Lifeblog::Media;
 use base qw(XML::Atom::Client);
 
 sub postLifeblog {
     my($self, $post_uri, $title, $body, $media) = @_;
-    my($content, $media_title);
-    if (ref($media)) {
-	return $self->error("post scalarref is now depreciated.");
+    if (!UNIVERSAL::isa($media, "XML::Atom::Lifeblog::Media") && !ref($media)) {
+        $media = XML::Atom::Lifeblog::Media->new(filename => $media);
+    } elsif (ref($media) eq 'HASH') {
+        $media = XML::Atom::Lifeblog::Media->new(%$media);
     }
 
-    # XXX should it support chunked POST?
-    local $/;
-    open my $fh, $media or return $self->error("$media: $!");
-    $content = <$fh>;
-    $media_title = File::Basename::basename($media);
-
-    my $mime_type  = $self->_guess_mime_type($media);
-    my $atom_media = $self->_create_media($media_title, $content, $mime_type);
+    my $atom_media = $self->_create_media($media);
     my $posted = $self->_post_entry($post_uri, $atom_media)
 	or return $self->error("POST ($media) failed: " . $self->errstr);
-    my $atom_body = $self->_create_body($title, $body, $posted->id, $mime_type);
+    my $atom_body = $self->_create_body($title, $body, $posted->id, $media->type);
     return $self->_post_entry($post_uri, $atom_body);
 }
 
@@ -45,12 +40,12 @@ sub _guess_mime_type {
 }
 
 sub _create_media {
-    my($self, $media_title, $content, $mime_type) = @_;
+    my($self, $media) = @_;
 
     my $entry = XML::Atom::Entry->new();
-    $entry->title($media_title);
-    $entry->content($content);
-    $entry->content->type($mime_type);
+    $entry->title($media->title);
+    $entry->content($media->content);
+    $entry->content->type($media->type);
 
     # add <standalone>1</standalone>
     my $tp = XML::Atom::Namespace->new(standalone => "http://sixapart.com/atom/typepad#");
@@ -111,6 +106,9 @@ XML::Atom::Lifeblog - Post lifeblog items using AtomAPI
 
   my $entry = $client->postLifeblog($PostURI, $title, $body, "foobar.jpg");
 
+  my $media = XML::Atom::Lifeblog::Media->new(content => $data);
+  my $entry = $client->postLifeblog($PostURI, $title, $body, $media);
+
 =head1 DESCRIPTION
 
 XML::Atom::Lifeblog is a wrapper for XML::Atom::Client that handles
@@ -120,14 +118,37 @@ Nokia Lifeblog API to post images associated with text messages.
 
 XML::Atom::Lifeblog is a subclass of XML::Atom::Client.
 
-=head1 postLifeblog
+=over 4
+
+=item postLifeblog
 
   my $entry = $client->postLifeblog($PostURI, $title, $body, $media);
 
 Creates a new Lifeblog entry and post it to a Lifeblog aware server
-using C<< <standalone> >> element. C<$media> is a filepath of image or video files to be posted.
+using C<< <standalone> >> element. C<$media> is either a
+XML::Atom::Lifeblog::Media object, or a filepath of media file to be
+posted.
 
 Returns XML::Atom::Entry object for the posted entry.
+
+There're several ways to create Media object. At least you should specify how to fetch media data. C<filename>, C<filehandle> or C<content>.
+
+  # create Media object
+  # Content-Type is auto-guessed and media title is auto-determined
+  my $media = XML::Atom::Lifeblog::Media->new(filename => "foo.jpg");
+  my $media = XML::Atom::Lifeblog::Media->new(filehandle => $fh);
+  my $media = XML::Atom::Lifeblog::Media->new(content  => $data);
+
+If you omit other parameters like C<type> and C<title>, they're automatically guessed and generated using MIME type and file magic. If you want to specify them explicitly, you can do this like:
+
+  my $media = XML::Atom::Lifeblog::Media->new(
+      filehandle => $fh, type => "video/3gpp", title => "My dog.3gp",
+  );
+
+  # Then post it with $title & $body to $PostURI
+  my $entry = $client->postLifeblog($PostURI, $title, $body, $media);
+
+=back
 
 =head1 AUTHOR
 
